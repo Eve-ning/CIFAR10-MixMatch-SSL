@@ -1,4 +1,5 @@
 from torchvision import transforms
+from torchvision.transforms.v2 import AutoAugmentPolicy, AutoAugment
 
 tf_preproc = transforms.Compose(
     [
@@ -7,11 +8,4 @@ tf_preproc = transforms.Compose(
     ]
 )
 
-tf_aug = transforms.Compose(
-    [
-        # transforms.RandomHorizontalFlip(p=0.5),
-        # transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
-        # transforms.RandomRotation(degrees=15),
-        # transforms.RandomResizedCrop(size=(32, 32), scale=(0.7, 1.0)),
-    ]
-)
+tf_aug = lambda x: x  # AutoAugment(AutoAugmentPolicy.CIFAR10)
