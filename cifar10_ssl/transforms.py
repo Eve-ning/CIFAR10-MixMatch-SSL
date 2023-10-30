@@ -8,4 +8,4 @@ tf_preproc = transforms.Compose(
     ]
 )
 
-tf_aug = lambda x: x  # AutoAugment(AutoAugmentPolicy.CIFAR10)
+tf_aug = AutoAugment(AutoAugmentPolicy.CIFAR10)

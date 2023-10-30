@@ -12,17 +12,19 @@ from tqdm import tqdm
 from cifar10_ssl.data import get_dataloaders
 from cifar10_ssl.mix_match import mix_match
 
+DEVICE = "cpu"
+
 NUM_UNL_AUGS = 2
 SHARPEN_TEMP = 0.5
 
 train_lbl_dl, train_unl_dl, test_dl = get_dataloaders(
     dataset_dir=(Path(__file__).parent / "data").as_posix(),
-    train_lbl_size=0.05,
-    train_unl_size=0.05,
+    train_lbl_size=0.005,
+    train_unl_size=0.005,
     test_size=0.01,
-    batch_size=256,
+    batch_size=64,
     num_workers=0,
-    seed=42
+    seed=42,
 )
 
 # Alternatively, we can use ResNet50
@@ -40,17 +42,17 @@ for p in net.parameters():
 net.fc = nn.Sequential(
     nn.Linear(net.fc.in_features, 10),
 )
-net.to("cuda")
+net.to(DEVICE)
 
 optimizer = torch.optim.Adam(
     net.fc.parameters(),
-    lr=1e-4,
+    lr=1e-3,
     weight_decay=1e-4,
     amsgrad=True,
 )
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer,
-    max_lr=1e-2,
+    max_lr=1e-1,
     epochs=100,
     steps_per_epoch=len(train_lbl_dl),
     pct_start=0.2,
@@ -60,8 +62,8 @@ scheduler = torch.optim.lr_scheduler.OneCycleLR(
 loss_lbl_fn = nn.CrossEntropyLoss()
 
 # Alternatively, we can use KLDivLoss
-# loss_unl_fn = nn.KLDivLoss(reduction="batchmean", log_target=True)
-loss_unl_fn = nn.MSELoss()
+loss_unl_fn = nn.KLDivLoss(reduction="batchmean", log_target=True)
+# loss_unl_fn = nn.MSELoss()
 loss_unl_scale = 100
 
 n_epochs = 100
@@ -69,26 +71,43 @@ n_epochs = 100
 for epoch in (t := tqdm(range(n_epochs))):
     net.train()
     for (x_unl, _), (x_lbl, y_lbl) in zip(train_unl_dl, train_lbl_dl):
+        BS, CH, H, W = x_unl.shape
+        CLS = 10
+
         optimizer.zero_grad()
-        x_unl = x_unl.to("cuda")
-        x_lbl = x_lbl.to("cuda")
-        y_lbl = y_lbl.to("cuda")
+        x_unl = x_unl.to(DEVICE)
+        x_lbl = x_lbl.to(DEVICE)
+        y_lbl = y_lbl.to(DEVICE)
+
         (x_lbl_mix, y_lbl_mix), (x_unl_mix, y_unl_mix) = mix_match(
-            x_unl, x_lbl, y_lbl,
+            x_unl,
+            x_lbl,
+            y_lbl,
             n_augs=NUM_UNL_AUGS,
             net=net,
             sharpen_temp=SHARPEN_TEMP,
         )
+        assert x_lbl_mix.shape == (BS, CH, H, W), x_lbl_mix.shape
+        assert x_unl_mix.shape == (BS, NUM_UNL_AUGS, CH, H, W), x_unl_mix.shape
+        assert y_lbl_mix.shape == (BS, CLS), y_lbl_mix.shape
+        assert y_unl_mix.shape == (BS, NUM_UNL_AUGS, CLS), y_unl_mix.shape
+
         y_lbl_pred_logits = net(x_lbl_mix)
-        y_unl_pred_logits = net(x_unl_mix)
+        assert y_lbl_pred_logits.shape == (BS, CLS), y_lbl_pred_logits.shape
+        y_unl_pred_logits = torch.stack(
+            [net(x_unl_mix[:, aug_i]) for aug_i in range(NUM_UNL_AUGS)], dim=1
+        )
+        assert y_unl_pred_logits.shape == (BS, NUM_UNL_AUGS, CLS), (
+            y_unl_pred_logits.shape,
+        )
 
         loss_lbl = loss_lbl_fn(y_lbl_pred_logits, y_lbl_mix)
         loss_unl = (
-                loss_unl_fn(
-                    nn.functional.softmax(y_unl_pred_logits, dim=1),
-                    nn.functional.softmax(y_unl_mix, dim=1),
-                )
-                * loss_unl_scale
+            loss_unl_fn(
+                nn.functional.softmax(y_unl_pred_logits, dim=1),
+                nn.functional.softmax(y_unl_mix, dim=1),
+            )
+            * loss_unl_scale
         )
 
         loss = loss_lbl + loss_unl
@@ -113,8 +132,8 @@ for epoch in (t := tqdm(range(n_epochs))):
     net.eval()
     accs = []
     for x, y in test_dl:
-        x = x.to("cuda")
-        y = y.to("cuda")
+        x = x.to(DEVICE)
+        y = y.to(DEVICE)
         y_pred_logits = net(x)
         y_pred = torch.argmax(y_pred_logits, dim=1)
         acc = (y_pred == y).float().mean().cpu().numpy()
