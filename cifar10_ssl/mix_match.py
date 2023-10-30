@@ -1,22 +1,8 @@
-import logging
-from pathlib import Path
-
 import numpy as np
 import torch
-from sklearn.preprocessing import OneHotEncoder
 from torch import nn
-from torch.utils.data import random_split, DataLoader
-from torchvision.datasets import CIFAR10
-from torchvision.models import (
-    wide_resnet50_2,
-    Wide_ResNet50_2_Weights,
-    resnet50,
-    ResNet50_Weights,
-)
-from tqdm import tqdm
 
-from cifar10_ssl.data import get_dataloaders
-from cifar10_ssl.transforms import tf_preproc, tf_aug
+from cifar10_ssl.transforms import tf_aug
 
 
 def sharpen(

@@ -1,5 +1,11 @@
 from torchvision import transforms
-from torchvision.transforms.v2 import AutoAugmentPolicy, AutoAugment
+from torchvision.transforms.v2 import (
+    RandomHorizontalFlip,
+    RandomVerticalFlip,
+    RandomCrop,
+)
+
+# from torchvision.transforms.v2 import AutoAugmentPolicy, AutoAugment
 
 tf_preproc = transforms.Compose(
     [
@@ -8,4 +14,10 @@ tf_preproc = transforms.Compose(
     ]
 )
 
-tf_aug = AutoAugment(AutoAugmentPolicy.CIFAR10)
+tf_aug = transforms.Compose(
+    [
+        RandomCrop(32),
+        RandomHorizontalFlip(),
+        RandomVerticalFlip(),
+    ]
+)
