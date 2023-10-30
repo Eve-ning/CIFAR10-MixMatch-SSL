@@ -42,11 +42,11 @@ net = wide_resnet50_2(weights=Wide_ResNet50_2_Weights.IMAGENET1K_V1)
 
 net.fc = nn.Sequential(
     nn.Linear(net.fc.in_features, 10),
-    nn.Softmax(dim=1),
+    # nn.Softmax(dim=1),
 )
 net.to(DEVICE)
 
-ema_net = copy.deepcopy(net)
+# ema_net = copy.deepcopy(net)
 
 
 def update_ema_variables(model, ema_model, ema_decay):
@@ -61,7 +61,7 @@ def update_ema_variables(model, ema_model, ema_decay):
 
 optimizer = torch.optim.Adam(
     net.fc.parameters(),
-    lr=0.002,
+    lr=0.015,
     weight_decay=1e-4,
     amsgrad=True,
 )
@@ -125,7 +125,7 @@ for epoch in (t := tqdm(range(n_epochs))):
 
         loss.backward()
         optimizer.step()
-        update_ema_variables(net, ema_net, 0.999)
+        # update_ema_variables(net, ema_net, 0.999)
         # scheduler.step()
 
         with torch.no_grad():
