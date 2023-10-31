@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
@@ -8,13 +9,13 @@ from tqdm import tqdm
 from cifar10_ssl.data import get_dataloaders
 from cifar10_ssl.eval import evaluate, compute_loss
 from cifar10_ssl.mix_match import mix_match
-from cifar10_ssl.models import wide_resnet_50_2, get_ema, update_ema
+from cifar10_ssl.models import wide_resnet_50_2, update_ema
 
 DEVICE = "cuda"
 
 N_AUGS = 2
 SHARPEN_TEMP = 0.5
-N_EPOCHS = 50
+N_EPOCHS = 2
 N_TRAIN_ITERS = 1024
 LR = 0.002
 WEIGHT_DECAY = LR * 0.02
@@ -23,7 +24,7 @@ train_lbl_dl, train_unl_dl, val_dl, test_dl, classes = get_dataloaders(
     dataset_dir=(Path(__file__).parent / "data").as_posix(),
     train_lbl_size=0.005,
     train_unl_size=0.980,
-    batch_size=128,
+    batch_size=64,
     num_workers=0,
     seed=42,
 )
@@ -36,7 +37,7 @@ print(
 n_classes = len(classes)
 
 net = wide_resnet_50_2(n_classes=n_classes).to(DEVICE)
-ema_net = get_ema(net).to(DEVICE).requires_grad_(False)
+ema_net = deepcopy(net).to(DEVICE)
 
 optimizer = torch.optim.Adam(
     net.fc.parameters(),
@@ -49,7 +50,7 @@ loss_unl_fn = nn.MSELoss()
 loss_unl_scaler = np.linspace(0, 100, N_EPOCHS)
 ema_decayer = np.linspace(0.999, 0.999, N_EPOCHS)
 
-for epoch in range(N_EPOCHS):  # (t_eval := tqdm(range(N_EPOCHS))):
+for epoch in (t_eval := tqdm(range(N_EPOCHS))):
     net.train()
 
     for train_ix in (t := tqdm(range(N_TRAIN_ITERS), leave=False)):
@@ -105,11 +106,12 @@ for epoch in range(N_EPOCHS):  # (t_eval := tqdm(range(N_EPOCHS))):
                 lbl_acc = (
                     (torch.argmax(y_lbl_pred, dim=1) == y_lbl).float().mean()
                 )
-            if train_ix % 10 == 0:
-                t.set_description(
-                    f"lbl.Loss: {loss_lbl:.2f}, unl.Loss: {loss_unl:.2f}, "
-                    f"lbl.Acc: {lbl_acc:.2%}"
-                )
+
+            t.set_description(
+                f"lbl.Loss: {loss_lbl:.2f}, unl.Loss: {loss_unl:.2f}, "
+                f"lbl.Acc: {lbl_acc:.2%}"
+            )
 
     val_acc = evaluate(net=ema_net, dl=val_dl, device=DEVICE)
-    print(f"Epoch: {epoch}, Val Acc: {val_acc:.2%}")
+
+    t_eval.set_description(f"Epoch: {epoch}, Val Acc: {val_acc:.2%}")
