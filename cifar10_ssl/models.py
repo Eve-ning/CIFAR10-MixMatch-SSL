@@ -20,8 +20,12 @@ def get_ema(net: nn.Module) -> nn.Module:
     return ema_net
 
 
-def update_ema(net: nn.Module, ema_net: nn.Module, ema_decay: float):
+def update_ema(
+    net: nn.Module,
+    ema_net: nn.Module,
+    ema_alpha: float,
+):
     for ema_param, net_param in zip(ema_net.parameters(), net.parameters()):
-        ema_param.data.mul_(ema_decay).add_(
-            net_param.data, alpha=(1 - ema_decay)
+        ema_param.data.mul_(ema_alpha).add_(
+            net_param.data, alpha=(1 - ema_alpha)
         )

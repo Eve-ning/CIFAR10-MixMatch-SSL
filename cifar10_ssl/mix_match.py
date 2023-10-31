@@ -43,7 +43,6 @@ def mix_up_partitioned(
     assert y_lbl.shape == (BS, CLS), y_lbl.shape
     assert y_unl.shape == (BS, AUGS, CLS), y_unl.shape
 
-    n_lbl = x_lbl.shape[0]
     x = torch.cat([torch.unsqueeze(x_lbl, dim=1), x_unl], dim=1)
     y = torch.cat([torch.unsqueeze(y_lbl, dim=1), y_unl], dim=1)
     assert x.shape == (BS, 1 + AUGS, CH, H, W), x.shape

@@ -15,8 +15,9 @@ DEVICE = "cuda"
 N_AUGS = 2
 SHARPEN_TEMP = 0.5
 N_EPOCHS = 2
-N_TRAIN_ITERS = 100
+N_TRAIN_ITERS = 1024
 LR = 0.002
+WEIGHT_DECAY = LR * 0.02
 
 train_lbl_dl, train_unl_dl, val_dl, test_dl, classes = get_dataloaders(
     dataset_dir=(Path(__file__).parent / "data").as_posix(),
@@ -40,15 +41,15 @@ ema_net = get_ema(net).to(DEVICE)
 optimizer = torch.optim.Adam(
     net.fc.parameters(),
     lr=LR,
+    weight_decay=WEIGHT_DECAY,
 )
-n_epochs = 1000
 lbl_loss_fn = nn.CrossEntropyLoss()
 loss_unl_fn = nn.MSELoss()
 
-loss_unl_scaler = np.linspace(0, 100, n_epochs)
-ema_decayer = np.linspace(0.9, 0.999, n_epochs)
+loss_unl_scaler = np.linspace(0, 100, N_EPOCHS)
+ema_decayer = np.linspace(0.9, 0.999, N_EPOCHS)
 
-for epoch in (t_eval := tqdm(range(n_epochs))):
+for epoch in (t_eval := tqdm(range(N_EPOCHS))):
     net.train()
 
     for train_ix in (t := tqdm(range(N_TRAIN_ITERS), leave=False)):
@@ -111,18 +112,5 @@ for epoch in (t_eval := tqdm(range(n_epochs))):
             )
 
     val_acc = evaluate(net=ema_net, dl=val_dl, device=DEVICE)
-    # evaluate(net=ema_net, dl=test_dl, device=DEVICE)
 
     t_eval.set_description(f"Epoch: {epoch}, Val Acc: {val_acc:.2%}")
-
-# scheduler = torch.optim.lr_scheduler.OneCycleLR(
-#     optimizer,
-#     max_lr=0.1,
-#     epochs=n_epochs,
-#     steps_per_epoch=len(train_lbl_dl),
-#     pct_start=0.03,
-#     three_phase=True,
-#     anneal_strategy="linear",
-#     div_factor=100,
-#     final_div_factor=1000,
-# )
