@@ -9,6 +9,16 @@ def sharpen(
     logits: torch.Tensor,
     temp: float,
 ) -> torch.Tensor:
+    """Sharpen the logits
+
+    Note:
+        This function doesn't require Softmax to be applied to the logits
+        as it is always scaled to sum to 1.
+
+    Args:
+        logits: The logits to sharpen.
+        temp: The temperature to sharpen with.
+    """
     logits_inv_temp = logits ** (1 / temp)
     return logits_inv_temp / logits_inv_temp.sum(dim=1, keepdim=True)
 
@@ -20,10 +30,28 @@ def mix_up(
     y_shuf: torch.Tensor,
     alpha: float = 0.75,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    l = np.random.beta(alpha, alpha)
-    l = max(l, 1 - l)
-    x = l * x + (1 - l) * x_shuf
-    y = l * y + (1 - l) * y_shuf
+    """Mixup the images and labels
+
+    Notes:
+        This performs the MixUp operation on the images and labels.
+        A ratio is drawn from a beta distribution, and the images
+        and labels are mixed with that ratio.
+
+        The ratio drawn is always greater than 0.5, and the larger ratio is
+        always used for the labelled images, thus the labelled images are
+        always more prevalent in the mixup.
+
+    Args:
+        x: The images.
+        y: The labels.
+        x_shuf: The shuffled images.
+        y_shuf: The shuffled labels.
+        alpha: The alpha parameter for the beta distribution.
+    """
+    ratio = np.random.beta(alpha, alpha)
+    ratio = max(ratio, 1 - ratio)
+    x = ratio * x + (1 - ratio) * x_shuf
+    y = ratio * y + (1 - ratio) * y_shuf
     return x, y
 
 
@@ -35,6 +63,40 @@ def mix_up_partitioned(
 ) -> tuple[
     tuple[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]
 ]:
+    """Mixup the images and labels, but partitioned
+
+    Notes:
+        This partitioning is necessary to avoid mixing up the order of the
+        labelled and unlabelled images.
+
+        We can visualize this, take for example the following:
+
+        | Original  | Shuffled  | Mixup                     |
+        |-----------|-----------|---------------------------|
+        | LBL       | UNL1      | LBL * r + UNL1 * (1 - r)  |
+        | UNL1      | LBL       | UNL1 * r + LBL * (1 - r)  |
+        | UNL2      | UNL4      | UNL2 * r + UNL4 * (1 - r) |
+        | UNL3      | UNL2      | UNL3 * r + UNL2 * (1 - r) |
+        | UNL4      | UNL3      | UNL4 * r + UNL3 * (1 - r) |
+
+        We create a shuffled version of the images, then mix by applying
+        a ratio to the original and shuffled images with the parameter r, which
+        is drawn from a beta distribution.
+
+        Both the image, and the labels are mixed:
+        - In the case of the image, the image values are simply mixed.
+        - In the case of the labels, the labels are mixed by applying the
+          ratio to the one-hot encoded labels.
+
+
+    Args:
+        x_lbl: The labelled images.
+        x_unl: The unlabelled images.
+        y_lbl: The labelled labels.
+        y_unl: The unlabelled labels.
+
+    """
+
     BS, AUGS, CH, H, W = x_unl.shape
     CLS = y_lbl.shape[1]
 
@@ -71,6 +133,29 @@ def mix_match(
 ) -> tuple[
     tuple[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]
 ]:
+    """MixMatch
+
+    Notes:
+        This is the MixMatch algorithm, as described in the paper.
+
+        We apply the following steps:
+        1. Augment the labelled and unlabelled images.
+        2. Compute the prediction of each augmentation of the unlabelled images.
+        3. Average the predictions of the unlabelled images.
+        4. Sharpen the averaged predictions.
+        5. Repeat the sharpened predictions to match the number of augmentations.
+        6. Mixup the labelled and unlabelled images and labels.
+        7. Return the mixed up images and labels.
+
+    Args:
+        x_unl: The unlabelled images.
+        x_lbl: The labelled images.
+        y_lbl: The labelled labels.
+        n_augs: The number of augmentations to apply.
+        net: The network to use for the predictions.
+        sharpen_temp: The temperature to sharpen the predictions with.
+    """
+
     BS, CH, H, W = x_unl.shape
     CLS = 10
 

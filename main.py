@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +9,7 @@ from tqdm import tqdm
 from cifar10_ssl.data import get_dataloaders
 from cifar10_ssl.eval import evaluate, compute_loss
 from cifar10_ssl.mix_match import mix_match
-from cifar10_ssl.models import wide_resnet_50_2, get_ema, update_ema
+from cifar10_ssl.models import wide_resnet_50_2, update_ema
 
 DEVICE = "cuda"
 
@@ -36,7 +37,7 @@ print(
 n_classes = len(classes)
 
 net = wide_resnet_50_2(n_classes=n_classes).to(DEVICE)
-ema_net = get_ema(net).to(DEVICE)
+ema_net = deepcopy(net).to(DEVICE)
 
 optimizer = torch.optim.Adam(
     net.fc.parameters(),

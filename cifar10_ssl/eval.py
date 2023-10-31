@@ -11,6 +11,16 @@ def evaluate(
     dl: DataLoader,
     device: torch.device | str,
 ) -> float:
+    """Evaluate the network on the given dataloader.
+
+    Args:
+        net: The network to evaluate.
+        dl: The dataloader to use.
+        device: The device to use.
+
+    Returns:
+        The accuracy of the network on the dataloader.
+    """
     accs = []
     for x, y in dl:
         x = x.to(device)
@@ -30,7 +40,22 @@ def compute_loss(
     lbl_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
     unl_loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
     unl_loss_scale: float,
-):
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Compute the loss for the labelled and unlabelled data.
+
+    Args:
+        y_lbl_pred: The prediction for the labelled data.
+        y_lbl_tgt: The target for the labelled data.
+        y_unl_pred: The prediction for the unlabelled data.
+        y_unl_tgt: The target for the unlabelled data.
+        lbl_loss_fn: The loss function for the labelled data.
+        unl_loss_fn: The loss function for the unlabelled data.
+        unl_loss_scale: The scale for the unlabelled loss.
+
+    Returns:
+        A tuple of the labelled and unlabelled losses.
+    """
+
     loss_lbl = lbl_loss_fn(y_lbl_pred, y_lbl_tgt)
     loss_unl = (
         unl_loss_fn(
