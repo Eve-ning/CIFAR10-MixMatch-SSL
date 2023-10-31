@@ -47,7 +47,7 @@ lbl_loss_fn = nn.CrossEntropyLoss()
 loss_unl_fn = nn.MSELoss()
 
 loss_unl_scaler = np.linspace(0, 100, N_EPOCHS)
-ema_decayer = np.linspace(0.9, 0.999, N_EPOCHS)
+ema_decayer = np.linspace(0.999, 0.999, N_EPOCHS)
 
 for epoch in (t_eval := tqdm(range(N_EPOCHS))):
     net.train()
