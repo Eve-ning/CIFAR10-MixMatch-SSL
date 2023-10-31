@@ -28,57 +28,48 @@ train_lbl_dl, train_unl_dl, test_dl = get_dataloaders(
     seed=42,
 )
 
-# Alternatively, we can use ResNet50
-# net = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
 net = wide_resnet50_2(weights=Wide_ResNet50_2_Weights.IMAGENET1K_V1)
-
-# Freeze all layers except the last one
-# for p in net.parameters():
-#     p.requires_grad = False
-
-# Alternatively, we can freeze only the first few layers
-# for p in (net.layer1, net.layer2, net.layer3):
-#     p.requires_grad = False
-
 net.fc = nn.Sequential(
     nn.Linear(net.fc.in_features, 10),
-    # nn.Softmax(dim=1),
 )
+ema_net = copy.deepcopy(net)
+ema_decay = (0.9, 0.999)
+ema_net.to(DEVICE)
 net.to(DEVICE)
-
-# ema_net = copy.deepcopy(net)
-
-
-def update_ema_variables(model, ema_model, ema_decay):
-    with torch.no_grad():
-        for ema_param, param in zip(
-            ema_model.parameters(), model.parameters()
-        ):
-            ema_param.data.copy_(
-                ema_param.data * ema_decay + (1 - ema_decay) * param.data
-            )
-
 
 optimizer = torch.optim.Adam(
     net.fc.parameters(),
-    lr=0.015,
-    weight_decay=1e-4,
-    amsgrad=True,
+    lr=0.01,
 )
-# scheduler = torch.optim.lr_scheduler.ExponentialLR(
-#     optimizer,
-#     gamma=0.999,
-# )
+n_epochs = 1000
+
+scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    optimizer,
+    max_lr=0.1,
+    epochs=n_epochs,
+    steps_per_epoch=len(train_lbl_dl),
+    pct_start=0.03,
+    three_phase=True,
+    anneal_strategy="linear",
+    div_factor=100,
+    final_div_factor=1000,
+)
+
 loss_lbl_fn = nn.CrossEntropyLoss()
 
 # Alternatively, we can use KLDivLoss
 # loss_unl_fn = nn.KLDivLoss(reduction="batchmean", log_target=True)
 loss_unl_fn = nn.MSELoss()
-loss_unl_scale = 100
-
-n_epochs = 100
+loss_unl_scale = (1, 100)
 
 for epoch in (t := tqdm(range(n_epochs))):
+    epoch_frac = epoch / n_epochs
+    loss_unl_scale_curr = (
+        loss_unl_scale[0]
+        + (loss_unl_scale[1] - loss_unl_scale[0]) * epoch_frac
+    )
+    ema_decay_curr = ema_decay[0] + (ema_decay[1] - ema_decay[0]) * epoch_frac
+
     net.train()
     for (x_unl, _), (x_lbl, y_lbl) in zip(train_unl_dl, train_lbl_dl):
         BS, CH, H, W = x_unl.shape
@@ -118,17 +109,23 @@ for epoch in (t := tqdm(range(n_epochs))):
                 nn.functional.softmax(y_unl_pred_logits, dim=1),
                 nn.functional.softmax(y_unl_mix, dim=1),
             )
-            * loss_unl_scale
+            * loss_unl_scale_curr
         )
 
         loss = loss_lbl + loss_unl
 
         loss.backward()
         optimizer.step()
-        # update_ema_variables(net, ema_net, 0.999)
-        # scheduler.step()
-
+        scheduler.step()
+        # EMA update
         with torch.no_grad():
+            for ema_param, net_param in zip(
+                ema_net.parameters(), net.parameters()
+            ):
+                ema_param.data.mul_(ema_decay_curr).add_(
+                    net_param.data, alpha=(1 - ema_decay_curr)
+                )
+
             lbl_acc = (
                 (torch.argmax(y_lbl_pred_logits, dim=1) == y_lbl)
                 .float()
@@ -136,7 +133,7 @@ for epoch in (t := tqdm(range(n_epochs))):
             )
 
         t.set_description(
-            # f"lr: {scheduler.get_last_lr()[0]:.4f}, "
+            f"lr: {scheduler.get_last_lr()[0]:.4f}, "
             f"lbl.Loss: {loss_lbl:.2f}, unl.Loss: {loss_unl:.2f}, "
             f"lbl.Acc: {lbl_acc:.2%}"
         )
@@ -146,7 +143,7 @@ for epoch in (t := tqdm(range(n_epochs))):
     for x, y in test_dl:
         x = x.to(DEVICE)
         y = y.to(DEVICE)
-        y_pred_logits = net(x)
+        y_pred_logits = ema_net(x)
         y_pred = torch.argmax(y_pred_logits, dim=1)
         acc = (y_pred == y).float().mean().cpu().numpy()
         accs.append(acc)
