@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
+from torch.nn.functional import softmax
 
 from cifar10_ssl.transforms import tf_aug
 
@@ -110,10 +111,10 @@ def mix_up_partitioned(
     assert x.shape == (BS, 1 + AUGS, CH, H, W), x.shape
     assert y.shape == (BS, 1 + AUGS, CLS), y.shape
 
-    # We only shuffle on the Augmentations axis
-    perm = torch.randperm(x.shape[1])
-    x_shuf = x[:, perm]
-    y_shuf = y[:, perm]
+    # We only shuffle on the Batch axis
+    perm = torch.randperm(x.shape[0])
+    x_shuf = x[perm]
+    y_shuf = y[perm]
     assert x_shuf.shape == (BS, 1 + AUGS, CH, H, W), x_shuf.shape
     assert y_shuf.shape == (BS, 1 + AUGS, CLS), y_shuf.shape
 
@@ -175,25 +176,25 @@ def mix_match(
 
     # This computes the prediction of each augmentation
     # then averages them.
-    with torch.no_grad():
-        y_unl_aug_pred_logits = torch.stack(
-            [net(x_unl_aug[:, aug_i]) for aug_i in range(n_augs)], dim=1
-        )
-        assert y_unl_aug_pred_logits.shape == (BS, n_augs, CLS), (
-            y_unl_aug_pred_logits.shape,
-        )
+    y_unl_aug_pred_logits = torch.stack(
+        [softmax(net(x_unl_aug[:, aug_i]), dim=-1) for aug_i in range(n_augs)],
+        dim=1,
+    )
+    assert y_unl_aug_pred_logits.shape == (BS, n_augs, CLS), (
+        y_unl_aug_pred_logits.shape,
+    )
 
-        y_unl_aug_pred_logits_mean = y_unl_aug_pred_logits.mean(dim=1)
-        assert y_unl_aug_pred_logits_mean.shape == (BS, CLS), (
-            y_unl_aug_pred_logits_mean.shape,
-        )
+    y_unl_aug_pred_logits_mean = y_unl_aug_pred_logits.mean(dim=1)
+    assert y_unl_aug_pred_logits_mean.shape == (BS, CLS), (
+        y_unl_aug_pred_logits_mean.shape,
+    )
 
-        y_unl_aug_pred_logits_sharpen = sharpen(
-            y_unl_aug_pred_logits_mean, sharpen_temp
-        )
-        assert y_unl_aug_pred_logits_sharpen.shape == (BS, CLS), (
-            y_unl_aug_pred_logits_sharpen.shape,
-        )
+    y_unl_aug_pred_logits_sharpen = sharpen(
+        y_unl_aug_pred_logits_mean, sharpen_temp
+    )
+    assert y_unl_aug_pred_logits_sharpen.shape == (BS, CLS), (
+        y_unl_aug_pred_logits_sharpen.shape,
+    )
 
     # We need to repeat to match the shape of the x_unl_aug
     y_unl_repeat = torch.unsqueeze(

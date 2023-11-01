@@ -35,3 +35,4 @@ def update_ema(
         ema_param.data.mul_(ema_alpha).add_(
             net_param.data, alpha=(1 - ema_alpha)
         )
+        # net_param.mul_(1 - (0.002 * 0.02))

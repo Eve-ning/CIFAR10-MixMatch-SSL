@@ -1,3 +1,4 @@
+import torch
 from torchvision import transforms
 from torchvision.transforms.v2 import (
     RandomHorizontalFlip,
@@ -16,6 +17,16 @@ tf_preproc = transforms.Compose(
 
 tf_aug = transforms.Compose(
     [
+        lambda x: torch.nn.functional.pad(
+            x,
+            (
+                4,
+                4,
+                4,
+                4,
+            ),
+            mode="reflect",
+        ),
         RandomCrop(32),
         RandomHorizontalFlip(),
         RandomVerticalFlip(),
